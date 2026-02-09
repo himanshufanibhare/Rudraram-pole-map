@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTDF Rudraram - Pole Location Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <div class="map-controls">
+            <button id="goToLocation" class="btn-control">Go to Rudraram</button>
+        </div>
+
+        <div class="map-legend">
+            <div class="legend-title">Legend</div>
+            <div class="legend-item">
+                <span class="legend-icon" style="background: #FFD700; border: 2px solid #FFD700;"></span>
+                <span class="legend-label">High Mast Light <span id="hmlCount">(0/0)</span></span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-icon" style="background: #66BB6A; border: 2px solid #4CAF50;"></span>
+                <span class="legend-label">Control Points (CPT/CPM) <span id="controlCount">(0/0)</span></span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-icon" style="background: #ff6666; border: 2px solid #ff4444;"></span>
+                <span class="legend-label">Dependent Poles (PWL/PNL) <span id="dependentCount">(0/0)</span></span>
+            </div>
+        </div>
+
+        <!-- Image modal -->
+        <div id="imageModal" class="image-modal" style="display:none;">
+            <div class="image-modal-backdrop"></div>
+            <div class="image-modal-content">
+                <button id="closeImageModal" class="image-modal-close">✕</button>
+                <div id="imageContainer" class="image-container"></div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+
+        <button id="toggleFilterPanel" class="toggle-filter-btn">
+            <span id="toggleIcon">▶</span>
+        </button>
+
+        <div class="filter-panel" id="filterPanel">
+            <div class="filter-header">
+                <h3>🔍 Filters</h3>
+            </div>
+            <div class="filter-actions">
+                <button id="clearFilters" class="btn-clear">Clear All</button>
+                <button id="showAllPoles" class="btn-show-all">Show All</button>
+            </div>
+
+
+
+            <div class="filter-section">
+                <h4>Search Pole</h4>
+                <div class="search-pole-container">
+                    <input type="text" id="poleSearchInput" placeholder="Enter Pole ID..." class="pole-search-input">
+                    <button id="poleSearchBtn" class="pole-search-btn" title="Search Pole">
+                        🔍
+                    </button>
+                    <div id="searchResult" class="search-result-message"></div>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h4>Point Types</h4>
+                <div class="filter-checkboxes">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showControl" checked>
+                        <span class="control-color">●</span> Control Points (CPT/CPM)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showDependent" checked>
+                        <span class="dependent-color">●</span> Dependent Poles (PWL/PNL)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showLabels" checked>
+                        🏷️ Show Pole ID Numbers
+                    </label>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h4>Control Points</h4>
+                <div class="control-point-actions">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="selectAllControls" checked>
+                        Select All
+                    </label>
+                </div>
+                <div id="controlPointList" class="control-checkbox-list">
+                    <!-- Control points will be added here dynamically -->
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h4>Distance Measurement</h4>
+                <div id="distanceInfo" class="distance-info-panel">
+                    <div id="distanceInstruction" class="distance-instruction">Select two poles using checkboxes in
+                        popups to measure distance</div>
+                    <div id="distanceResult" class="distance-result"></div>
+                </div>
+            </div>
+
+            <div class="filter-stats">
+                <div class="stat-item">
+                    <strong id="visibleCount">0</strong>
+                    <span>Visible Points</span>
+                </div>
+                <div class="stat-item">
+                    <strong id="totalCount">0</strong>
+                    <span>Total Points</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Initialize the map
+        let map;
+        let allMarkers = [];
+        let allData = [];
+
+        // Distance measurement variables
+        let selectedPoles = [];
+        let distanceLine = null;
+        let poleCheckboxes = {};
+
+        function initMap() {
+            // Create map centered on Hyderabad area initially
+            map = L.map('map').setView([17.557, 78.166], 15);
+
+            // Define multiple tile layer options
+            const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19,
+                minZoom: 3,
+                crossOrigin: true,
+                tileSize: 256,
+                zoomOffset: 0,
+                detectRetina: true,
+                updateWhenIdle: false,
+                updateWhenZooming: false,
+                keepBuffer: 2
+            });
+
+            // Alternative tile layer - CartoDB Positron (lighter, faster)
+            const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 19,
+                minZoom: 3,
+                subdomains: 'abcd'
+            });
+
+            // Alternative tile layer - OpenStreetMap HOT (Humanitarian)
+            const osmHOT = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19,
+                minZoom: 3
+            });
+
+            // Add default layer
+            osmStandard.addTo(map);
+
+            // Load coordinates after map is ready
+            setTimeout(loadCoordinates, 200);
+        }
+
+        function loadCoordinates() {
+            fetch('/api/coordinates')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.coordinates || data.coordinates.length === 0) {
+                        console.log('No poles found');
+                        return;
+                    }
+
+                    allData = data.coordinates;
+
+                    console.log(`Loaded ${allData.length} poles`);
+
+                    // Create all markers first
+                    createMarkers();
+
+                    // Initialize filters and control lists
+                    initializeFilters();
+                    createControlList();
+
+                    // Update stats and legend counts
+                    updateStats();
+
+                    // Calculate initial counts for legend
+                    let hmlTotal = 0, controlTotal = 0, dependentTotal = 0;
+                    allMarkers.forEach(marker => {
+                        const isHighMastLight = marker.data.high_mast_light === 'YES';
+                        if (marker.data.type === 'control' && !isHighMastLight) {
+                            controlTotal++;
+                        } else if (isHighMastLight) {
+                            hmlTotal++;
+                        } else {
+                            dependentTotal++;
+                        }
+                    });
+                    updateLegendCounts(hmlTotal, controlTotal, dependentTotal);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error loading poles');
+                });
+        }
+
+        // Build the Control Points checkbox list
+        function createControlList() {
+            const listContainer = document.getElementById('controlPointList');
+            const selectAllCheckbox = document.getElementById('selectAllControls');
+
+            // Clear existing items
+            listContainer.innerHTML = '';
+
+            // Get unique control points from data and sort by ref_group (Rxx)
+            const controls = allData.filter(d => d.type === 'control');
+
+            // Sort controls by ref_group number (extract number from R10, R17, etc.)
+            controls.sort((a, b) => {
+                const numA = parseInt(a.ref_group.replace('R', '')) || 0;
+                const numB = parseInt(b.ref_group.replace('R', '')) || 0;
+                return numA - numB;
+            });
+
+            controls.forEach(ctrl => {
+                // count dependents for this control by matching ref_group
+                const dependents = allData.filter(d => d.type === 'dependent' && d.ref_group === ctrl.ref_group);
+                const count = dependents.length;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'control-checkbox-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `ctrl_${ctrl.id}`;
+                checkbox.value = ctrl.label;
+                checkbox.checked = true;
+                checkbox.dataset.refGroup = ctrl.ref_group;
+                checkbox.addEventListener('change', handleControlCheckboxChange);
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'control-item-info';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'control-item-label';
+                // Show location (with ref_group) if available, otherwise show label (with ref_group)
+                const ref = ctrl.ref_group || '';
+                if (ctrl.location) {
+                    labelDiv.textContent = `${ctrl.location} (${ref})`;
+                } else {
+                    labelDiv.textContent = `${ctrl.label} (${ref})`;
+                }
+
+                const countDiv = document.createElement('div');
+                countDiv.className = 'control-item-count';
+                countDiv.textContent = `${count} dependent pole${count !== 1 ? 's' : ''}`;
+
+                infoDiv.appendChild(labelDiv);
+                infoDiv.appendChild(countDiv);
+
+                itemDiv.appendChild(checkbox);
+                itemDiv.appendChild(infoDiv);
+
+                // Make the whole div clickable
+                itemDiv.addEventListener('click', (e) => {
+                    if (e.target !== checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        handleControlCheckboxChange();
+                    }
+                });
+
+                listContainer.appendChild(itemDiv);
+            });
+
+            // Add event listener for "Select All" checkbox
+            selectAllCheckbox.addEventListener('change', function () {
+                const checkboxes = listContainer.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(cb => {
+                    cb.checked = this.checked;
+                });
+                handleControlCheckboxChange();
+            });
+        }
+
+        // When a control checkbox changes, recompute visibility for all markers
+        function handleControlCheckboxChange() {
+            handleFilterChange();
+        }
+
+        // Recompute marker visibility based on selected controls and global toggles
+        function handleFilterChange() {
+            const listContainer = document.getElementById('controlPointList');
+            const controlCheckboxes = listContainer.querySelectorAll('input[type="checkbox"]:checked');
+
+            // Build set of ref_groups and labels for selected controls
+            const selectedControlLabels = new Set();
+            const controlledRefGroups = new Set();
+
+            controlCheckboxes.forEach(cb => {
+                selectedControlLabels.add(cb.value);
+                controlledRefGroups.add(cb.dataset.refGroup);
+            });
+
+            const allControlsSelected = controlCheckboxes.length === listContainer.querySelectorAll('input[type="checkbox"]').length;
+
+            const showControl = document.getElementById('showControl').checked;
+            const showDependent = document.getElementById('showDependent').checked;
+            const showLabels = document.getElementById('showLabels').checked;
+
+            let visibleCount = 0;
+
+            let hmlVisible = 0, controlVisible = 0, dependentVisible = 0;
+
+            allMarkers.forEach(marker => {
+                const isHighMastLight = marker.data.high_mast_light === 'YES';
+
+                if (marker.data.type === 'control' && !isHighMastLight) {
+                    const shouldShow = (selectedControlLabels.has(marker.data.label)) && showControl;
+                    if (shouldShow) {
+                        map.addLayer(marker.circle);
+                        if (showLabels) {
+                            map.addLayer(marker.label);
+                        }
+                        visibleCount++;
+                        controlVisible++;
+                    } else {
+                        map.removeLayer(marker.circle);
+                        map.removeLayer(marker.label);
+                    }
+                } else {
+                    // dependent poles (including high mast light): show if showDependent and (all controls selected OR its ref_group is controlled)
+                    const shouldShow = showDependent && (allControlsSelected || controlledRefGroups.has(marker.data.ref_group));
+                    if (shouldShow) {
+                        map.addLayer(marker.circle);
+                        if (showLabels) {
+                            map.addLayer(marker.label);
+                        }
+                        visibleCount++;
+                        if (isHighMastLight) {
+                            hmlVisible++;
+                        } else {
+                            dependentVisible++;
+                        }
+                    } else {
+                        map.removeLayer(marker.circle);
+                        map.removeLayer(marker.label);
+                    }
+                }
+            });
+
+            updateStats(visibleCount);
+            updateLegendCounts(hmlVisible, controlVisible, dependentVisible);
+        }
+
+        function initializeFilters() {
+            // Only setup global toggles and clear action. Control list drives grouping.
+            document.getElementById('showControl').addEventListener('change', handleFilterChange);
+            document.getElementById('showDependent').addEventListener('change', handleFilterChange);
+            document.getElementById('showLabels').addEventListener('change', handleLabelToggle);
+            document.getElementById('clearFilters').addEventListener('click', clearAllFilters);
+            document.getElementById('showAllPoles').addEventListener('click', showAllPoles);
+        }
+
+        // Handle label visibility toggle
+        function handleLabelToggle() {
+            const showLabels = document.getElementById('showLabels').checked;
+
+            allMarkers.forEach(marker => {
+                if (showLabels) {
+                    if (map.hasLayer(marker.circle)) {
+                        map.addLayer(marker.label);
+                    }
+                } else {
+                    map.removeLayer(marker.label);
+                }
+            });
+        }
+
+        // Handle distance checkbox in popup
+        function handleDistanceCheckbox(poleId, checked, poleData, latlng) {
+            if (checked) {
+                if (selectedPoles.length >= 2) {
+                    // Uncheck the first selected pole
+                    const firstPole = selectedPoles[0];
+                    if (poleCheckboxes[firstPole.data.id]) {
+                        poleCheckboxes[firstPole.data.id].checked = false;
+                    }
+                    selectedPoles.shift();
+                }
+                selectedPoles.push({ data: poleData, latlng: latlng });
+                poleCheckboxes[poleId] = document.getElementById(`distanceCheck_${poleId}`);
+            } else {
+                selectedPoles = selectedPoles.filter(p => p.data.id !== poleId);
+                delete poleCheckboxes[poleId];
+            }
+
+            updateDistanceMeasurement();
+        }
+
+        // Update distance measurement display
+        function updateDistanceMeasurement() {
+            // Remove existing line
+            if (distanceLine) {
+                map.removeLayer(distanceLine);
+                if (distanceLine.distanceLabel) {
+                    map.removeLayer(distanceLine.distanceLabel);
+                }
+                distanceLine = null;
+            }
+
+            const distanceInstruction = document.getElementById('distanceInstruction');
+            const distanceResult = document.getElementById('distanceResult');
+
+            if (selectedPoles.length === 0) {
+                distanceInstruction.innerHTML = 'Select two poles using checkboxes in popups to measure distance';
+                distanceResult.innerHTML = '';
+            } else if (selectedPoles.length === 1) {
+                distanceInstruction.innerHTML = `Selected: <strong>${selectedPoles[0].data.label}</strong> (ID: ${selectedPoles[0].data.id})<br>Select second pole...`;
+                distanceResult.innerHTML = '';
+            } else if (selectedPoles.length === 2) {
+                // Calculate and display distance
+                const distance = calculateDistance(
+                    selectedPoles[0].latlng.lat,
+                    selectedPoles[0].latlng.lng,
+                    selectedPoles[1].latlng.lat,
+                    selectedPoles[1].latlng.lng
+                );
+
+                // Draw line between poles
+                distanceLine = L.polyline([
+                    [selectedPoles[0].latlng.lat, selectedPoles[0].latlng.lng],
+                    [selectedPoles[1].latlng.lat, selectedPoles[1].latlng.lng]
+                ], {
+                    color: '#2196F3',
+                    weight: 3,
+                    opacity: 0.8,
+                    dashArray: '10, 10'
+                }).addTo(map);
+
+                // Add distance label on the line
+                const midLat = (selectedPoles[0].latlng.lat + selectedPoles[1].latlng.lat) / 2;
+                const midLng = (selectedPoles[0].latlng.lng + selectedPoles[1].latlng.lng) / 2;
+
+                const distanceLabel = L.marker([midLat, midLng], {
+                    icon: L.divIcon({
+                        className: 'distance-label',
+                        html: `<div class="distance-badge">${distance.toFixed(2)} m</div>`,
+                        iconSize: [100, 30]
+                    })
+                }).addTo(map);
+
+                distanceLine.distanceLabel = distanceLabel;
+
+                distanceInstruction.innerHTML = '';
+                distanceResult.innerHTML = `
+                    <strong>Distance Measurement:</strong><br>
+                    From: <strong>${selectedPoles[0].data.label}</strong> (ID: ${selectedPoles[0].data.id})<br>
+                    To: <strong>${selectedPoles[1].data.label}</strong> (ID: ${selectedPoles[1].data.id})<br>
+                    <div class="distance-value">📏 ${distance.toFixed(2)} meters</div>
+                    <button id="resetDistance" class="btn-reset-distance">Clear Selection</button>
+                `;
+
+                // Add reset button handler
+                setTimeout(() => {
+                    const resetBtn = document.getElementById('resetDistance');
+                    if (resetBtn) {
+                        resetBtn.addEventListener('click', () => {
+                            // Uncheck all checkboxes
+                            Object.keys(poleCheckboxes).forEach(poleId => {
+                                if (poleCheckboxes[poleId]) {
+                                    poleCheckboxes[poleId].checked = false;
+                                }
+                            });
+                            selectedPoles = [];
+                            poleCheckboxes = {};
+                            updateDistanceMeasurement();
+                        });
+                    }
+                }, 100);
+            }
+        }
+
+        // Calculate distance between two points using Haversine formula
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance in meters
+        }
+
+        function createMarkers() {
+            let bounds = L.latLngBounds();
+
+            allData.forEach(coord => {
+                if (coord.lat && coord.lon) {
+                    const isControl = coord.type === 'control';
+                    const isHighMastLight = coord.high_mast_light === 'YES';
+
+                    // Color logic: High mast light poles are yellow, otherwise control=green, dependent=red
+                    let color, fillColor;
+                    if (isHighMastLight) {
+                        color = '#FFD700';        // Gold/Yellow for high mast light
+                        fillColor = '#FFED4E';    // Bright yellow fill
+                    } else if (isControl) {
+                        color = '#4CAF50';        // Green for control points
+                        fillColor = '#66BB6A';
+                    } else {
+                        color = '#ff4444';        // Red for dependent poles
+                        fillColor = '#ff6666';
+                    }
+
+                    const circle = L.circleMarker([coord.lat, coord.lon], {
+                        color: color,
+                        fillColor: fillColor,
+                        fillOpacity: 0.8,
+                        radius: 7,
+                        weight: 2
+                    }).addTo(map);
+
+                    // Create ID label
+                    const idLabel = L.divIcon({
+                        className: 'marker-label',
+                        html: `<span class="id-badge">${coord.id}</span>`,
+                        iconSize: [30, 20],
+                        iconAnchor: [15, -5]
+                    });
+
+                    const idMarker = L.marker([coord.lat, coord.lon], { icon: idLabel }).addTo(map);
+
+                    // Build lighting info section
+                    let lightingInfo = '';
+                    if (coord.high_mast_light === 'YES') {
+                        lightingInfo += `<small><b>High Mast Light:</b> YES</small>`;
+                    }
+                    if (coord.no_of_lights !== undefined) {
+                        lightingInfo += `<small><b>Lights:</b> ${coord.no_of_lights} (${coord.light_type || 'NA'})</small>`;
+                    }
+                    if (coord.working !== undefined) {
+                        const workingColor = coord.working === 'YES' ? '#4CAF50' : '#ff4444';
+                        lightingInfo += `<small><b>Status:</b> <span style="color: ${workingColor}; font-weight: bold;">${coord.working === 'YES' ? '✓ Working' : '✗ Not Working'}</span></small>`;
+                    }
+
+                    const popupContent = `
+                        <div class="popup-content">
+                            <div class="popup-header">
+                                <strong>ID: ${coord.id}</strong>
+                                <strong>${coord.label}</strong>
+                            </div>
+                            <div class="popup-grid">
+                                <div class="popup-col">
+                                    <small><b>Group:</b> ${coord.ref_group}</small>
+                                    <small><b>Type:</b> ${coord.type === 'control' ? 'Control Point' : 'Dependent Pole'}</small>
+                                    ${lightingInfo}
+                                </div>
+                                <div class="popup-col">
+                                    <small><b>Lat:</b> ${coord.lat.toFixed(6)}</small>
+                                    <small><b>Lon:</b> ${coord.lon.toFixed(6)}</small>
+                                </div>
+                            </div>
+                            <div class="popup-actions">
+                                <div class="popup-distance-check">
+                                    <label>
+                                        <input type="checkbox" id="distanceCheck_${coord.id}" class="distance-checkbox">
+                                            <span class="distance-label">Measure Distance</span>
+                                    </label>
+                                </div>
+                                ${coord.images && coord.images.length ? `
+                                <div class="popup-view-btn">
+                                    <button class="btn-view-images" data-images='${JSON.stringify(coord.images)}'>View Images</button>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+
+                    const popup = circle.bindPopup(popupContent, {
+                        closeButton: true,
+                        autoClose: false,
+                        className: 'custom-popup'
+                    });
+
+                    // Add event listener when popup opens
+                    popup.on('popupopen', function () {
+                        const checkbox = document.getElementById(`distanceCheck_${coord.id}`);
+                        if (checkbox) {
+                            // Set checkbox state if this pole is already selected
+                            checkbox.checked = selectedPoles.some(p => p.data.id === coord.id);
+
+                            checkbox.addEventListener('change', function (e) {
+                                e.stopPropagation();
+                                handleDistanceCheckbox(coord.id, this.checked, coord, { lat: coord.lat, lng: coord.lon });
+                            });
+                        }
+                    });
+
+                    bounds.extend([coord.lat, coord.lon]);
+
+                    allMarkers.push({
+                        circle: circle,
+                        label: idMarker,
+                        data: coord
+                    });
+                }
+            });
+
+            // After creating markers, center map on the first valid coordinate (user request)
+            const firstValid = allData.find(d => d.lat && d.lon);
+            if (firstValid) {
+                map.setView([firstValid.lat, firstValid.lon], 17);
+            } else if (bounds.isValid()) {
+                setTimeout(() => {
+                    map.fitBounds(bounds, {
+                        padding: [50, 100],
+                        maxZoom: 16,
+                        animate: true
+                    });
+                }, 300);
+            }
+        }
+
+
+
+        function clearAllFilters() {
+            // Check all control point checkboxes
+            const listContainer = document.getElementById('controlPointList');
+            const checkboxes = listContainer.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = true);
+
+            // Check "Select All" checkbox
+            document.getElementById('selectAllControls').checked = true;
+
+            // Reset global toggles
+            document.getElementById('showControl').checked = true;
+            document.getElementById('showDependent').checked = true;
+            handleFilterChange();
+        }
+
+        // Show every marker (controls + dependents) regardless of grouping
+        function showAllPoles() {
+            // ensure UI toggles reflect showing everything
+            document.getElementById('showControl').checked = true;
+            document.getElementById('showDependent').checked = true;
+
+            // Check all control point checkboxes
+            const listContainer = document.getElementById('controlPointList');
+            const checkboxes = listContainer.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = true);
+
+            // Check "Select All" checkbox
+            document.getElementById('selectAllControls').checked = true;
+
+            // add every marker back to the map
+            let visibleCount = 0;
+            let hmlVisible = 0, controlVisible = 0, dependentVisible = 0;
+            allMarkers.forEach(m => {
+                if (m.data && m.data.lat && m.data.lon) {
+                    try {
+                        map.addLayer(m.circle);
+                        map.addLayer(m.label);
+                        visibleCount++;
+
+                        const isHighMastLight = m.data.high_mast_light === 'YES';
+                        if (m.data.type === 'control' && !isHighMastLight) {
+                            controlVisible++;
+                        } else if (isHighMastLight) {
+                            hmlVisible++;
+                        } else {
+                            dependentVisible++;
+                        }
+                    } catch (e) {
+                        console.error('Error showing marker', e);
+                    }
+                }
+            });
+
+            updateStats(visibleCount);
+            updateLegendCounts(hmlVisible, controlVisible, dependentVisible);
+        }
+
+        function updateStats(visible) {
+            const visibleCount = visible !== undefined ? visible : allMarkers.length;
+            document.getElementById('visibleCount').textContent = visibleCount;
+            document.getElementById('totalCount').textContent = allMarkers.length;
+        }
+
+        function updateLegendCounts(hmlVisible, controlVisible, dependentVisible) {
+            // Update legend with just the visible counts
+            document.getElementById('hmlCount').textContent = `(${hmlVisible})`;
+            document.getElementById('controlCount').textContent = `(${controlVisible})`;
+            document.getElementById('dependentCount').textContent = `(${dependentVisible})`;
+        }
+
+        // Button to go to specific location
+        function goToFixedLocation() {
+            const targetLat = 17.547;
+            const targetLon = 78.160;
+            const targetZoom = 15;
+
+            map.setView([targetLat, targetLon], targetZoom, {
+                animate: true,
+                duration: 1
+            });
+        }
+
+        window.onload = () => {
+            initMap();
+            document.getElementById('goToLocation').addEventListener('click', goToFixedLocation);
+
+            // Toggle filter panel functionality
+            const toggleBtn = document.getElementById('toggleFilterPanel');
+            const filterPanel = document.getElementById('filterPanel');
+            const toggleIcon = document.getElementById('toggleIcon');
+            const mapControls = document.querySelector('.map-controls');
+
+            toggleBtn.addEventListener('click', () => {
+                filterPanel.classList.toggle('collapsed');
+                toggleBtn.classList.toggle('collapsed');
+                mapControls.classList.toggle('panel-collapsed');
+
+                if (filterPanel.classList.contains('collapsed')) {
+                    toggleIcon.textContent = '◀';
+                } else {
+                    toggleIcon.textContent = '▶';
+                }
+            });
+
+            // Image modal handlers
+            const imageModal = document.getElementById('imageModal');
+            const imageContainer = document.getElementById('imageContainer');
+            const closeImageModal = document.getElementById('closeImageModal');
+
+            document.body.addEventListener('click', (e) => {
+                const btn = e.target.closest('.btn-view-images');
+                if (!btn) return;
+                const imgs = JSON.parse(btn.getAttribute('data-images') || '[]');
+                imageContainer.innerHTML = '';
+                imgs.forEach(src => {
+                    const im = document.createElement('img');
+                    im.src = src;
+                    imageContainer.appendChild(im);
+                });
+                imageModal.style.display = 'flex';
+            });
+
+            closeImageModal.addEventListener('click', () => {
+                imageModal.style.display = 'none';
+                imageContainer.innerHTML = '';
+            });
+
+            // click outside to close
+            document.querySelector('.image-modal-backdrop').addEventListener('click', () => {
+                imageModal.style.display = 'none';
+                imageContainer.innerHTML = '';
+            });
+
+            // Pole search functionality
+            const poleSearchInput = document.getElementById('poleSearchInput');
+            const poleSearchBtn = document.getElementById('poleSearchBtn');
+            const searchResult = document.getElementById('searchResult');
+            let searchTimeout;
+
+            function searchPole() {
+                const searchId = poleSearchInput.value.trim();
+
+                // Clear previous message
+                searchResult.className = 'search-result-message';
+                searchResult.textContent = '';
+
+                if (!searchId) {
+                    searchResult.className = 'search-result-message error';
+                    searchResult.textContent = 'Please enter a pole ID';
+                    setTimeout(() => {
+                        searchResult.className = 'search-result-message';
+                    }, 3000);
+                    return;
+                }
+
+                // Find pole by ID
+                const poleId = parseInt(searchId);
+                const marker = allMarkers.find(m => m.data.id === poleId);
+
+                if (marker && marker.data) {
+                    // Show success message
+                    searchResult.className = 'search-result-message success';
+                    searchResult.textContent = `Found: ${marker.data.label}`;
+
+                    // Ensure marker is visible on map
+                    if (!map.hasLayer(marker.circle)) {
+                        map.addLayer(marker.circle);
+                    }
+                    if (!map.hasLayer(marker.label)) {
+                        map.addLayer(marker.label);
+                    }
+
+                    // Zoom to pole location
+                    map.setView([marker.data.lat, marker.data.lon], 18, {
+                        animate: true,
+                        duration: 0.5
+                    });
+
+                    // Open popup
+                    setTimeout(() => {
+                        marker.circle.openPopup();
+                    }, 600);
+
+                    // Clear message after 3 seconds
+                    setTimeout(() => {
+                        searchResult.className = 'search-result-message';
+                    }, 3000);
+                } else {
+                    searchResult.className = 'search-result-message error';
+                    searchResult.textContent = `Pole ID ${searchId} not found`;
+                    setTimeout(() => {
+                        searchResult.className = 'search-result-message';
+                    }, 3000);
+                }
+            }
+
+            poleSearchBtn.addEventListener('click', searchPole);
+            poleSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchPole();
+                }
+            });
+        };
+    </script>
+</body>
+
+</html>

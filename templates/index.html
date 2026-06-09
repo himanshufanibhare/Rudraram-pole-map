@@ -16,11 +16,15 @@
 <body>
     <div class="container">
         <div class="map-controls">
-            <button id="goToLocation" class="btn-control">Go to Rudraram</button>
+            <button id="goToLocation" class="btn-control">📍</button>
         </div>
 
         <div class="map-legend">
             <div class="legend-title">Legend</div>
+            <div class="legend-item">
+                <span class="legend-icon" style="background: #2196F3; border: 3px solid #1565C0;"></span>
+                <span class="legend-label">Border Router Gateway</span>
+            </div>
             <div class="legend-item">
                 <span class="legend-icon" style="background: #FFD700; border: 2px solid #FFD700;"></span>
                 <span class="legend-label">High Mast Light <span id="hmlCount">(0/0)</span></span>
@@ -82,6 +86,10 @@
                     <label class="checkbox-label">
                         <input type="checkbox" id="showDependent" checked>
                         <span class="dependent-color">●</span> Dependent Poles (PWL/PNL)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showHighMast" checked>
+                        <span class="highmast-color">●</span> High Mast Light (HML)
                     </label>
                     <label class="checkbox-label">
                         <input type="checkbox" id="showLabels" checked>
@@ -206,10 +214,10 @@
                     let hmlTotal = 0, controlTotal = 0, dependentTotal = 0;
                     allMarkers.forEach(marker => {
                         const isHighMastLight = marker.data.high_mast_light === 'YES';
-                        if (marker.data.type === 'control' && !isHighMastLight) {
-                            controlTotal++;
-                        } else if (isHighMastLight) {
+                        if (isHighMastLight) {
                             hmlTotal++;
+                        } else if (marker.data.type === 'control') {
+                            controlTotal++;
                         } else {
                             dependentTotal++;
                         }
@@ -241,8 +249,12 @@
             });
 
             controls.forEach(ctrl => {
-                // count dependents for this control by matching ref_group
-                const dependents = allData.filter(d => d.type === 'dependent' && d.ref_group === ctrl.ref_group);
+                // count only true dependent poles; exclude high mast lights from the control-group totals
+                const dependents = allData.filter(d =>
+                    d.type === 'dependent' &&
+                    d.high_mast_light !== 'YES' &&
+                    d.ref_group === ctrl.ref_group
+                );
                 const count = dependents.length;
 
                 const itemDiv = document.createElement('div');
@@ -323,6 +335,7 @@
 
             const showControl = document.getElementById('showControl').checked;
             const showDependent = document.getElementById('showDependent').checked;
+            const showHighMast = document.getElementById('showHighMast').checked;
             const showLabels = document.getElementById('showLabels').checked;
 
             let visibleCount = 0;
@@ -330,9 +343,32 @@
             let hmlVisible = 0, controlVisible = 0, dependentVisible = 0;
 
             allMarkers.forEach(marker => {
+                // Border Router Gateway is always visible
+                if (marker.data.type === 'border_router') {
+                    map.addLayer(marker.circle);
+                    if (showLabels) {
+                        map.addLayer(marker.label);
+                    }
+                    visibleCount++;
+                    return;
+                }
+
                 const isHighMastLight = marker.data.high_mast_light === 'YES';
 
-                if (marker.data.type === 'control' && !isHighMastLight) {
+                if (isHighMastLight) {
+                    const shouldShow = showHighMast;
+                    if (shouldShow) {
+                        map.addLayer(marker.circle);
+                        if (showLabels) {
+                            map.addLayer(marker.label);
+                        }
+                        visibleCount++;
+                        hmlVisible++;
+                    } else {
+                        map.removeLayer(marker.circle);
+                        map.removeLayer(marker.label);
+                    }
+                } else if (marker.data.type === 'control') {
                     const shouldShow = (selectedControlLabels.has(marker.data.label)) && showControl;
                     if (shouldShow) {
                         map.addLayer(marker.circle);
@@ -346,7 +382,7 @@
                         map.removeLayer(marker.label);
                     }
                 } else {
-                    // dependent poles (including high mast light): show if showDependent and (all controls selected OR its ref_group is controlled)
+                    // dependent poles: show if showDependent and (all controls selected OR its ref_group is controlled)
                     const shouldShow = showDependent && (allControlsSelected || controlledRefGroups.has(marker.data.ref_group));
                     if (shouldShow) {
                         map.addLayer(marker.circle);
@@ -354,11 +390,7 @@
                             map.addLayer(marker.label);
                         }
                         visibleCount++;
-                        if (isHighMastLight) {
-                            hmlVisible++;
-                        } else {
-                            dependentVisible++;
-                        }
+                        dependentVisible++;
                     } else {
                         map.removeLayer(marker.circle);
                         map.removeLayer(marker.label);
@@ -374,6 +406,7 @@
             // Only setup global toggles and clear action. Control list drives grouping.
             document.getElementById('showControl').addEventListener('change', handleFilterChange);
             document.getElementById('showDependent').addEventListener('change', handleFilterChange);
+            document.getElementById('showHighMast').addEventListener('change', handleFilterChange);
             document.getElementById('showLabels').addEventListener('change', handleLabelToggle);
             document.getElementById('clearFilters').addEventListener('click', clearAllFilters);
             document.getElementById('showAllPoles').addEventListener('click', showAllPoles);
@@ -521,27 +554,41 @@
                 if (coord.lat && coord.lon) {
                     const isControl = coord.type === 'control';
                     const isHighMastLight = coord.high_mast_light === 'YES';
+                    const isBorderRouter = coord.type === 'border_router';
 
-                    // Color logic: High mast light poles are yellow, otherwise control=green, dependent=red
-                    let color, fillColor;
-                    if (isHighMastLight) {
-                        color = '#FFD700';        // Gold/Yellow for high mast light
-                        fillColor = '#FFED4E';    // Bright yellow fill
-                    } else if (isControl) {
-                        color = '#4CAF50';        // Green for control points
-                        fillColor = '#66BB6A';
+                    let circle;
+
+                    // Special handling for Border Router Gateway
+                    if (isBorderRouter) {
+                        circle = L.circleMarker([coord.lat, coord.lon], {
+                            color: '#1565C0',        // Dark blue border
+                            fillColor: '#2196F3',    // Bright blue fill
+                            fillOpacity: 0.9,
+                            radius: 10,             // Larger radius than regular poles
+                            weight: 3
+                        }).addTo(map);
                     } else {
-                        color = '#ff4444';        // Red for dependent poles
-                        fillColor = '#ff6666';
-                    }
+                        // Color logic: High mast light poles are yellow, otherwise control=green, dependent=red
+                        let color, fillColor;
+                        if (isHighMastLight) {
+                            color = '#FFD700';        // Gold/Yellow for high mast light
+                            fillColor = '#FFED4E';    // Bright yellow fill
+                        } else if (isControl) {
+                            color = '#4CAF50';        // Green for control points
+                            fillColor = '#66BB6A';
+                        } else {
+                            color = '#ff4444';        // Red for dependent poles
+                            fillColor = '#ff6666';
+                        }
 
-                    const circle = L.circleMarker([coord.lat, coord.lon], {
-                        color: color,
-                        fillColor: fillColor,
-                        fillOpacity: 0.8,
-                        radius: 7,
-                        weight: 2
-                    }).addTo(map);
+                        circle = L.circleMarker([coord.lat, coord.lon], {
+                            color: color,
+                            fillColor: fillColor,
+                            fillOpacity: 0.8,
+                            radius: 7,
+                            weight: 2
+                        }).addTo(map);
+                    }
 
                     // Create ID label
                     const idLabel = L.divIcon({
@@ -575,7 +622,7 @@
                             <div class="popup-grid">
                                 <div class="popup-col">
                                     <small><b>Group:</b> ${coord.ref_group}</small>
-                                    <small><b>Type:</b> ${coord.type === 'control' ? 'Control Point' : 'Dependent Pole'}</small>
+                                    <small><b>Type:</b> ${coord.type === 'border_router' ? 'Border Router Gateway' : coord.type === 'control' ? 'Control Point' : 'Dependent Pole'}</small>
                                     ${lightingInfo}
                                 </div>
                                 <div class="popup-col">
@@ -658,6 +705,7 @@
             // Reset global toggles
             document.getElementById('showControl').checked = true;
             document.getElementById('showDependent').checked = true;
+            document.getElementById('showHighMast').checked = true;
             handleFilterChange();
         }
 
@@ -666,6 +714,7 @@
             // ensure UI toggles reflect showing everything
             document.getElementById('showControl').checked = true;
             document.getElementById('showDependent').checked = true;
+            document.getElementById('showHighMast').checked = true;
 
             // Check all control point checkboxes
             const listContainer = document.getElementById('controlPointList');
@@ -686,10 +735,10 @@
                         visibleCount++;
 
                         const isHighMastLight = m.data.high_mast_light === 'YES';
-                        if (m.data.type === 'control' && !isHighMastLight) {
-                            controlVisible++;
-                        } else if (isHighMastLight) {
+                        if (isHighMastLight) {
                             hmlVisible++;
+                        } else if (m.data.type === 'control') {
+                            controlVisible++;
                         } else {
                             dependentVisible++;
                         }
@@ -718,9 +767,9 @@
 
         // Button to go to specific location
         function goToFixedLocation() {
-            const targetLat = 17.547;
-            const targetLon = 78.160;
-            const targetZoom = 15;
+            const targetLat = 17.56311;
+            const targetLon = 78.16753;
+            const targetZoom = 17;
 
             map.setView([targetLat, targetLon], targetZoom, {
                 animate: true,

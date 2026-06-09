@@ -23,15 +23,20 @@ def read_coordinates():
                 if not lat or not lon or lat == 0 or lon == 0:
                     continue
                 
-                # Extract reference group (RXX pattern)
-                ref_match = re.search(r'R(\d+|XX)', label, re.IGNORECASE)
-                ref_group = ref_match.group(0).upper() if ref_match else 'UNKNOWN'
-                reference_groups.add(ref_group)
-                
-                # Determine point type
-                point_type = 'dependent'  # Default: PWL, PNL, etc.
-                if re.search(r'-(CPT|CPM|CPTHM|CPMHM)-', label, re.IGNORECASE):
-                    point_type = 'control'
+                # Check if point_type is explicitly defined in data
+                if 'point_type' in data:
+                    point_type = data.get('point_type')
+                    ref_group = 'NA'
+                else:
+                    # Extract reference group (RXX pattern)
+                    ref_match = re.search(r'R(\d+|XX)', label, re.IGNORECASE)
+                    ref_group = ref_match.group(0).upper() if ref_match else 'UNKNOWN'
+                    reference_groups.add(ref_group)
+                    
+                    # Determine point type
+                    point_type = 'dependent'  # Default: PWL, PNL, etc.
+                    if re.search(r'-(CPT|CPM|CPTHM|CPMHM)-', label, re.IGNORECASE):
+                        point_type = 'control'
                 
                 # Get additional lighting information
                 high_mast_light = data.get('high-mast-light', 'NO').upper()
@@ -110,4 +115,4 @@ def serve_pole_image(filename):
     return send_from_directory(img_folder, filename)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5003)

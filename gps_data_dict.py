@@ -1,4 +1,15 @@
 gps_data = {
+    0: {
+        'latitude': '17.56311',
+        'longitude': '78.16753',
+        'label': 'Border Router Gateway',
+        'point_type': 'border_router',
+        'high-mast-light': 'NO',
+        'no of lights': '0',
+        'light type': 'NA',
+        'working':'YES'
+
+    },
     1: {
         'latitude': '17.546980',
         'longitude': '78.15911',
@@ -588,7 +599,7 @@ gps_data = {
     65: {
         'latitude': '17.55347',
         'longitude': '78.164878',
-        'label': 'WC-XX-R20-HML-01',
+        'label': 'WC-XX-R18-PWL-01',
         'high-mast-light':'NO',
         'no of lights':'2',
         'light type':'LED',
@@ -1336,7 +1347,7 @@ gps_data = {
     147: {
         'latitude': '17.559315',
         'longitude': '78.165468',
-        'label': 'VC-XX-R04-HML-01',
+        'label': 'VC-XX-R04-CPT-01',
         'location':'Godam Gate',
         'high-mast-light':'YES',
         'no of lights':'4',

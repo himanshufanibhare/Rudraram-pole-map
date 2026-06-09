@@ -89,14 +89,18 @@ body {
     background: white;
     color: #667eea;
     border: none;
-    padding: 10px 18px;
+    padding: 8px;
+    width: 36px;
+    height: 36px;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    font-size: 0.95em;
+    font-size: 1.2em;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     transition: all 0.3s ease;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-control:hover {
@@ -205,7 +209,8 @@ body {
     margin-bottom: 12px;
 }
 
-.btn-clear, .btn-show-all {
+.btn-clear,
+.btn-show-all {
     flex: 1;
     background: #667eea;
     color: white;
@@ -280,6 +285,11 @@ body {
 
 .dependent-color {
     color: #ff4444;
+    font-size: 1.2em;
+}
+
+.highmast-color {
+    color: #FFD700;
     font-size: 1.2em;
 }
 
@@ -434,11 +444,13 @@ body {
     gap: 10px;
     margin-top: 6px;
 }
+
 .popup-distance-check {
     display: flex;
     align-items: center;
     margin: 0;
 }
+
 .popup-distance-check label {
     display: flex;
     align-items: center;
@@ -446,11 +458,13 @@ body {
     margin: 0;
     line-height: 1;
 }
-.distance-label { 
-    font-weight: 600; 
+
+.distance-label {
+    font-weight: 600;
     color: #3b82f6;
     line-height: 1.2;
 }
+
 .btn-view-images {
     background: #fff;
     border: 1px solid #ccc;
@@ -464,9 +478,13 @@ body {
     white-space: nowrap;
     margin-top: 20px;
 }
-.btn-view-images:hover { background:#f0f0f0; }
-.popup-view-btn { 
-    display: flex; 
+
+.btn-view-images:hover {
+    background: #f0f0f0;
+}
+
+.popup-view-btn {
+    display: flex;
     align-items: center;
     margin: 0;
 }
@@ -545,12 +563,60 @@ body {
 }
 
 /* Image modal styles */
-.image-modal { position: fixed; top:0; left:0; right:0; bottom:0; z-index:2000; display:flex; align-items:center; justify-content:center; }
-.image-modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.5); }
-.image-modal-content { position:relative; background:white; padding:12px; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.4); max-width:800px; width:90%; max-height:90%; overflow:auto; }
-.image-modal-close { position:absolute; right:8px; top:8px; background:transparent; border:none; font-size:1.2em; cursor:pointer; }
-.image-container { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
-.image-container img { max-width:48%; height:auto; border-radius:6px; border:1px solid #ddd; }
+.image-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.image-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.image-modal-content {
+    position: relative;
+    background: white;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    max-width: 800px;
+    width: 90%;
+    max-height: 90%;
+    overflow: auto;
+}
+
+.image-modal-close {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    background: transparent;
+    border: none;
+    font-size: 1.2em;
+    cursor: pointer;
+}
+
+.image-container {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.image-container img {
+    max-width: 48%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -558,7 +624,7 @@ body {
         width: 240px;
         font-size: 0.9em;
     }
-    
+
     .rotation-controls {
         bottom: 80px;
     }
@@ -566,9 +632,12 @@ body {
 
 /* Loading Animation */
 @keyframes pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.5;
     }
